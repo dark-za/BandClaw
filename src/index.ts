@@ -12,7 +12,11 @@ import { writeFileSkill } from './features/skills/filesystem/write_file.js';
 import { deleteFileSkill } from './features/skills/filesystem/delete_file.js';
 import { listDirectorySkill } from './features/skills/filesystem/list_directory.js';
 
-// ─── Main ──────────────────────────────────────────────────────
+// Markdown Skills
+import { searchMarkdownSkills } from './features/skills/markdown/search_skills.js';
+import { loadMarkdownSkill } from './features/skills/markdown/load_skill.js';
+
+// Init Singletons ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   console.log('');
@@ -34,6 +38,8 @@ async function main(): Promise<void> {
   skillManager.register(writeFileSkill);
   skillManager.register(deleteFileSkill);
   skillManager.register(listDirectorySkill);
+  skillManager.register(searchMarkdownSkills);
+  skillManager.register(loadMarkdownSkill);
   console.log('');
 
   // 3. Start webhook server

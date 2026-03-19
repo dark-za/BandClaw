@@ -15,6 +15,7 @@ export class SkillManager {
       this.categories.set(skill.category, new Set());
     }
     this.categories.get(skill.category)!.add(skill.name);
+    this.enabledCategories.add(skill.category); // Auto-enable every registered category
 
     console.log(`  📦 Registered skill: ${skill.name} [${skill.category}]`);
   }
