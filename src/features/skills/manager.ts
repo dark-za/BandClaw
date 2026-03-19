@@ -1,4 +1,4 @@
-import type { Skill, CategoryInfo } from './types.js';
+import type { Skill, CategoryInfo } from '../../interfaces/types.js';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions.js';
 
 export class SkillManager {

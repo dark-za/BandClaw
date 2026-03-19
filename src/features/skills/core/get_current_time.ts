@@ -1,4 +1,4 @@
-import type { Skill } from '../types.js';
+import type { Skill } from '../../../interfaces/types.js';
 
 export const getCurrentTime: Skill = {
   name: 'get_current_time',

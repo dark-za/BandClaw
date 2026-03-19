@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions.js';
-import { config } from './config.js';
-import { MODEL_MAP, MODEL_NAMES, ModelInfo } from './types.js';
+import { config } from '../infrastructure/config.js';
+import { MODEL_MAP, MODEL_NAMES, ModelInfo } from '../interfaces/types.js';
 
 // ─── Client ──────────────────────────────────────────────────────
 

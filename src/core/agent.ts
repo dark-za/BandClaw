@@ -1,8 +1,9 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js';
-import { chat } from './llm.js';
-import { saveMessage, getHistory } from './db.js';
-import { skillManager } from './skills/manager.js';
-import { getActiveModelName } from './llm.js';
+import { chat } from '../services/llm.js';
+import { saveMessage, getHistory } from '../infrastructure/db.js';
+import { skillManager } from '../features/skills/manager.js';
+import { getActiveModelName } from '../services/llm.js';
+import { stripReasoningTags, parseTextToolCall } from './parsers/tool_parser.js';
 
 const MAX_ITERATIONS = 10;
 
@@ -81,24 +82,10 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
       // --- ADVANCED TEXT-TO-TOOL FALLBACK PARSER ---
       if (!response.toolCalls || response.toolCalls.length === 0) {
         if (response.content) {
-          const toolCallRegex = /<tool_call>\s*(\[.*?\])\s*<\/tool_call>/s;
-          const match = response.content.match(toolCallRegex);
-          if (match && match[1]) {
-            try {
-              const parsedTools = JSON.parse(match[1]);
-              response.toolCalls = parsedTools.map((pt: any) => ({
-                 id: pt.tool_call_id || `call_${Math.random().toString(36).substring(7)}`,
-                 type: 'function',
-                 function: { 
-                   name: pt.tool_name || pt.name, 
-                   arguments: typeof pt.parameters === 'string' ? pt.parameters : JSON.stringify(pt.parameters || pt.arguments || {}) 
-                 }
-              }));
-              // Strip the tool call block from the assistant's message text
-              response.content = response.content.replace(toolCallRegex, '').trim();
-            } catch (e) {
-               console.warn("⚠️ Failed to parse text-based tool call wrapper", e);
-            }
+          const parsedCalls = parseTextToolCall(response.content);
+          if (parsedCalls) {
+            response.toolCalls = parsedCalls;
+            response.content = response.content.replace(/<tool_call>\s*(\[.*?\])\s*<\/tool_call>/s, '').trim();
           }
         }
       }
@@ -148,11 +135,7 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
       // No tool calls — this is the final response
       let finalContent = response.content ?? 'I have no response.';
       
-      // Strip out <think>...</think> and similar reasoning artifacts
-      finalContent = finalContent.replace(/<think>[\s\S]*?<\/think>/gi, '');
-      finalContent = finalContent.replace(/<\|startthinking\|>[\s\S]*?<\|endthinking\|>/gi, '');
-      finalContent = finalContent.replace(/<\|.*?\|>/g, ''); // catches <|start_response|>, <|end_response|>, etc
-      finalContent = finalContent.trim();
+      finalContent = stripReasoningTags(finalContent);
       
       if (!finalContent) {
         finalContent = 'Thinking process completed, but no final answer was generated. Please adjust the model or prompt.';

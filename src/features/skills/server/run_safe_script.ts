@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process';
+import { execFile, exec } from 'node:child_process';
 import { access, constants } from 'node:fs/promises';
 import path from 'node:path';
-import type { Skill } from '../../types.js';
+import type { Skill } from '../../../interfaces/types.js';
 
 const SAFE_DIR = path.resolve(process.cwd(), 'safe_scripts');
 

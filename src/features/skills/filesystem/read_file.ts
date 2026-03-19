@@ -1,8 +1,8 @@
 import { access, stat, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
-import { config } from '../../config.js';
-import type { Skill } from '../../types.js';
+import { config } from '../../../infrastructure/config.js';
+import type { Skill } from '../../../interfaces/types.js';
 
 const MAX_READ_SIZE = 1024 * 1024; // 1MB
 

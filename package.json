@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "bandclaw": "./dist/cli.js"
+    "bandclaw": "./dist/cli/cli.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

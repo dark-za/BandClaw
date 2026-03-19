@@ -1,16 +1,16 @@
-import { initDatabase } from './db.js';
-import { skillManager } from './skills/manager.js';
-import { startBot } from './bot.js';
-import { startWebhookServer } from './webhook.js';
+import { initDatabase } from './infrastructure/db.js';
+import { skillManager } from './features/skills/manager.js';
+import { startBot } from './infrastructure/bot.js';
+import { startWebhookServer } from './infrastructure/webhook.js';
 
 // ─── Import Skills ─────────────────────────────────────────────
-import { getCurrentTime } from './skills/core/get_current_time.js';
-import { readHostSystem } from './skills/server/read_host_system.js';
-import { runSafeScript } from './skills/server/run_safe_script.js';
-import { readFileSkill } from './skills/filesystem/read_file.js';
-import { writeFileSkill } from './skills/filesystem/write_file.js';
-import { deleteFileSkill } from './skills/filesystem/delete_file.js';
-import { listDirectorySkill } from './skills/filesystem/list_directory.js';
+import { getCurrentTime } from './features/skills/core/get_current_time.js';
+import { readHostSystem } from './features/skills/server/read_host_system.js';
+import { runSafeScript } from './features/skills/server/run_safe_script.js';
+import { readFileSkill } from './features/skills/filesystem/read_file.js';
+import { writeFileSkill } from './features/skills/filesystem/write_file.js';
+import { deleteFileSkill } from './features/skills/filesystem/delete_file.js';
+import { listDirectorySkill } from './features/skills/filesystem/list_directory.js';
 
 // ─── Main ──────────────────────────────────────────────────────
 

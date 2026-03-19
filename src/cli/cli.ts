@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 // Resolve project root (assuming this file is compiled to dist/cli.js)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '..');
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 const args = process.argv.slice(2);
 const command = args[0]?.toLowerCase();

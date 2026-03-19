@@ -2,10 +2,10 @@ import { Bot, Context, InputFile } from 'grammy';
 import os from 'node:os';
 import { config } from './config.js';
 import { clearHistory } from './db.js';
-import { getActiveModel, getActiveModelName, switchModel, switchModelById, fetchAvailableModels } from './llm.js';
-import { runAgent } from './agent.js';
-import { skillManager } from './skills/manager.js';
-import { MODEL_MAP, MODEL_NAMES } from './types.js';
+import { fetchAvailableModels, switchModelById, getActiveModelName, getActiveModel, switchModel } from '../services/llm.js';
+import { runAgent } from '../core/agent.js';
+import { skillManager } from '../features/skills/manager.js';
+import { MODEL_MAP, MODEL_NAMES } from '../interfaces/types.js';
 
 const bot = new Bot(config.telegramBotToken);
 

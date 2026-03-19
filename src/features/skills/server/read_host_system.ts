@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { execSync } from 'node:child_process';
-import type { Skill } from '../../types.js';
+import type { Skill } from '../../../interfaces/types.js';
 
 function getCpuUsage(): string {
   const cpus = os.cpus();

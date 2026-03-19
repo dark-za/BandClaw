@@ -1,7 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { config } from '../../config.js';
-import type { Skill } from '../../types.js';
+import type { Skill } from '../../../interfaces/types.js';
+import { config } from '../../../infrastructure/config.js';
 
 const MAX_ENTRIES = 200;
 const MAX_DEPTH = 3;

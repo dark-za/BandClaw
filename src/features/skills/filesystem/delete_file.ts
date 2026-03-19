@@ -1,7 +1,7 @@
 import { rm, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { config } from '../../config.js';
-import type { Skill } from '../../types.js';
+import type { Skill } from '../../../interfaces/types.js';
+import { config } from '../../../infrastructure/config.js';
 
 const BLOCKLIST = ['.env', 'memory.db', 'node_modules', 'dist', '.git'];
 
