@@ -18,14 +18,21 @@ You have access to tools that you can call when the user asks you to perform act
 - Only call tools when the user's request genuinely requires them.
 - Provide clear, formatted responses.
 - If a tool returns an error, explain it to the user.
+- IF YOU WANT TO CALL A TOOL, use the EXACT names provided below.
 
 Current model: {MODEL_NAME}
-Active tools: {ACTIVE_TOOLS}`;
+Active tools:
+{ACTIVE_TOOLS_SCHEMA}`;
 
 function buildSystemPrompt(): string {
+  const tools = skillManager.getActiveTools();
+  const schemaStr = tools.length > 0
+    ? JSON.stringify(tools.map(t => t.function), null, 2)
+    : 'none';
+
   return SYSTEM_PROMPT
     .replace('{MODEL_NAME}', getActiveModelName())
-    .replace('{ACTIVE_TOOLS}', skillManager.getActiveSkillNames().join(', ') || 'none');
+    .replace('{ACTIVE_TOOLS_SCHEMA}', schemaStr);
 }
 
 function storedToMessage(stored: { role: string; content: string | null; tool_calls: string | null; tool_call_id: string | null; name: string | null }): ChatCompletionMessageParam {
@@ -70,6 +77,32 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
 
     try {
       const response = await chat(messages, tools.length > 0 ? tools : undefined);
+
+      // --- ADVANCED TEXT-TO-TOOL FALLBACK PARSER ---
+      if (!response.toolCalls || response.toolCalls.length === 0) {
+        if (response.content) {
+          const toolCallRegex = /<tool_call>\s*(\[.*?\])\s*<\/tool_call>/s;
+          const match = response.content.match(toolCallRegex);
+          if (match && match[1]) {
+            try {
+              const parsedTools = JSON.parse(match[1]);
+              response.toolCalls = parsedTools.map((pt: any) => ({
+                 id: pt.tool_call_id || `call_${Math.random().toString(36).substring(7)}`,
+                 type: 'function',
+                 function: { 
+                   name: pt.tool_name || pt.name, 
+                   arguments: typeof pt.parameters === 'string' ? pt.parameters : JSON.stringify(pt.parameters || pt.arguments || {}) 
+                 }
+              }));
+              // Strip the tool call block from the assistant's message text
+              response.content = response.content.replace(toolCallRegex, '').trim();
+            } catch (e) {
+               console.warn("⚠️ Failed to parse text-based tool call wrapper", e);
+            }
+          }
+        }
+      }
+      // ---------------------------------------------
 
       // If the LLM wants to call tools
       if (response.toolCalls && response.toolCalls.length > 0) {
