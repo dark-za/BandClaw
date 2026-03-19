@@ -2,8 +2,6 @@ import { Bot, Context, InputFile } from 'grammy';
 import os from 'node:os';
 import { exec } from 'node:child_process';
 import util from 'node:util';
-import dns from 'node:dns';
-import https from 'node:https';
 import { config } from './config.js';
 import { clearHistory, deleteAfterMessage, getLastUserMessage, saveVram, getStat, getHistory } from './db.js';
 import { fetchAvailableModels, switchModelById, switchModelByIndex, getActiveModelName, getActiveModel, chat } from '../services/llm.js';
@@ -12,36 +10,7 @@ import { skillManager } from '../features/skills/manager.js';
 
 const execAsync = util.promisify(exec);
 
-// ─── DNS Fix ──────────────────────────────────────────────────
-// Force dns.resolve* to use public DNS (fixes ENOTFOUND api.telegram.org)
-dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
-
-function publicDnsLookup(hostname: string, options: any, callback: any): void {
-  if (typeof options === 'function') {
-    callback = options;
-    options = {};
-  }
-  dns.resolve4(hostname, (err, addresses) => {
-    if (!err && addresses && addresses.length > 0) {
-      return callback(null, addresses[0], 4);
-    }
-    dns.lookup(hostname, { family: 4 }, callback);
-  });
-}
-
-const telegramAgent = new https.Agent({
-  keepAlive: true,
-  lookup: publicDnsLookup as any,
-});
-
-const bot = new Bot(config.telegramBotToken, {
-  client: {
-    baseFetchConfig: {
-      agent: telegramAgent,
-      compress: true,
-    },
-  },
-});
+const bot = new Bot(config.telegramBotToken);
 
 // ─── Security Middleware ───────────────────────────────────────
 
