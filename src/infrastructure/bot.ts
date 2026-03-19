@@ -195,12 +195,13 @@ bot.command('ping', async (ctx) => {
 });
 
 bot.command('reboot', async (ctx) => {
-  await ctx.reply('⚙️ Rebooting PM2 process...');
-  try {
-    await execAsync('pm2 restart bandclaw');
-  } catch (err: any) {
-    await ctx.reply(`❌ Reboot failed: \${err.message}`);
-  }
+  await ctx.reply('⚙️ Rebooting PM2 process in 2 seconds...');
+  // Decouple restart to prevent Telegram Death Loop (kill before acknowledge)
+  setTimeout(() => {
+    exec('pm2 restart bandclaw', (err) => {
+      if (err) console.error('❌ Reboot failed:', err);
+    });
+  }, 2000);
 });
 
 bot.command('net', async (ctx) => {
