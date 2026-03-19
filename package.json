@@ -1,0 +1,30 @@
+{
+  "name": "bandclaw",
+  "version": "1.0.0",
+  "description": "BandClaw — Personal AI Agent via Telegram with local LLM",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "bandclaw": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["ai", "agent", "telegram", "llm", "local"],
+  "license": "MIT",
+  "dependencies": {
+    "grammy": "^1.31.0",
+    "openai": "^4.77.0",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0"
+  }
+}
