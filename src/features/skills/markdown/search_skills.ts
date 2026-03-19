@@ -1,30 +1,23 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import type { Skill } from '../../../interfaces/types.js';
-
-const SKILL_PATHS = [
-  path.join(os.homedir(), '.gemini', 'antigravity', 'global_skills'),
-  path.join(os.homedir(), '.claude', 'skills'),
-  path.join(os.homedir(), '.codex', 'skills'),
-  path.resolve(process.cwd(), 'src/features/skills/core/ai-coding-setup-main/skills-inventory')
-];
+import { skillManager } from '../manager.js';
 
 export const searchMarkdownSkills: Skill = {
   name: 'search_markdown_skills',
-  description: 'Search for available Markdown-based workflow skills installed on the system. Returns a list of skill names that you can then load using load_markdown_skill.',
+  description: 'Search for available workflow skills or read the master skills inventory. Use this if the user asks what skills you possess.',
   category: 'knowledge',
   schema: {
     type: 'function',
     function: {
       name: 'search_markdown_skills',
-      description: 'Search for available Markdown-based workflow skills installed on the system.',
+      description: 'Retrieve a list of all active tools and natively integrated skills available in the system.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: 'Optional search term to filter skill names (e.g., "python", "react", "security").',
+            description: 'Optional filter criteria. E.g., "docker" or "web".',
           },
         },
       },
@@ -32,33 +25,38 @@ export const searchMarkdownSkills: Skill = {
   },
   execute: async (args: Record<string, unknown>) => {
     const query = typeof args.query === 'string' ? args.query.toLowerCase() : '';
-    const foundSkills = new Set<string>();
-
-    for (const basePath of SKILL_PATHS) {
-      try {
-        const stats = await fs.stat(basePath);
-        if (stats.isDirectory()) {
-          const entries = await fs.readdir(basePath, { withFileTypes: true });
-          for (const entry of entries) {
-            if (entry.isDirectory()) {
-              if (!query || entry.name.toLowerCase().includes(query)) {
-                foundSkills.add(entry.name);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        // Path doesn't exist or isn't accessible, ignore
-      }
+    
+    // 1. Fetch live native skills from Memory
+    const activeSkills = skillManager.getActiveTools().map(tool => tool.function.name);
+    
+    // 2. Filter based on query
+    let filtered = activeSkills;
+    if (query) {
+      filtered = activeSkills.filter(s => s.toLowerCase().includes(query));
     }
 
-    if (foundSkills.size === 0) {
-      return JSON.stringify({ message: 'No Markdown skills found. The user might need to run the ai-coding-setup-main install script first.' });
+    // 3. Try fetching the SKILLS_INVENTORY.md context if no specific query or if looking for general info
+    let inventoryText = '';
+    try {
+      const inventoryPath = path.resolve(process.cwd(), 'src/features/skills/docs/SKILLS_INVENTORY.md');
+      const content = await fs.readFile(inventoryPath, 'utf8');
+      inventoryText = '\\n\\n--- OFFICIAL SKILLS INVENTORY ---\\n' + content;
+    } catch {
+      // Ignore if file is missing
+    }
+
+    if (filtered.length === 0) {
+      return JSON.stringify({ 
+        message: 'No active native skills matched your query.',
+        inventoryText
+      });
     }
 
     return JSON.stringify({
-      total: foundSkills.size,
-      skills: Array.from(foundSkills).sort(),
+      message: 'These technical skills are fully installed, loaded into my system prompt, and natively ready to execute right now. I do NOT need external setup.',
+      total_active_skills: filtered.length,
+      active_skills: filtered.sort(),
+      inventoryText
     });
   },
 };
