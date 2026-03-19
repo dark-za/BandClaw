@@ -1,6 +1,6 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js';
 import { chat } from '../services/llm.js';
-import { saveMessage, getHistory } from '../infrastructure/db.js';
+import { saveMessage, getHistory, getTopVram } from '../infrastructure/db.js';
 import { skillManager } from '../features/skills/manager.js';
 import { getActiveModelName } from '../services/llm.js';
 import { stripReasoningTags, parseTextToolCall } from './parsers/tool_parser.js';
@@ -23,17 +23,27 @@ You have access to tools that you can call when the user asks you to perform act
 
 Current model: {MODEL_NAME}
 Active tools:
-{ACTIVE_TOOLS_SCHEMA}`;
+{ACTIVE_TOOLS_SCHEMA}
 
-function buildSystemPrompt(): string {
+{VRAM_CONTEXT}`;
+
+function buildSystemPrompt(userId: string): string {
   const tools = skillManager.getActiveTools();
   const schemaStr = tools.length > 0
     ? JSON.stringify(tools.map(t => t.function), null, 2)
     : 'none';
 
+  // Fetch VRAM Context
+  const vramEntries = getTopVram(userId, 3);
+  let vramStr = '';
+  if (vramEntries.length > 0) {
+    vramStr = '\\n--- VRAM (Quick Recall Context) ---\\n' + vramEntries.map((v, i) => `[Mem \${i+1}]: \${v.summary}`).join('\\n');
+  }
+
   return SYSTEM_PROMPT
     .replace('{MODEL_NAME}', getActiveModelName())
-    .replace('{ACTIVE_TOOLS_SCHEMA}', schemaStr);
+    .replace('{ACTIVE_TOOLS_SCHEMA}', schemaStr)
+    .replace('{VRAM_CONTEXT}', vramStr);
 }
 
 function storedToMessage(stored: { role: string; content: string | null; tool_calls: string | null; tool_call_id: string | null; name: string | null }): ChatCompletionMessageParam {
@@ -66,7 +76,7 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
   // Build messages from history
   const history = getHistory(userId);
   const messages: ChatCompletionMessageParam[] = [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: buildSystemPrompt(userId) },
     ...history.map(storedToMessage),
   ];
 

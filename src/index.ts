@@ -26,6 +26,7 @@ import { trendRadarSkill } from './features/skills/integrations/trend_radar.js';
 import { taskMasterSkill } from './features/skills/integrations/task_master.js';
 import { agentOrchestratorSkill } from './features/skills/integrations/orchestrator.js';
 import { webBrowserSkill } from './features/skills/integrations/web_browser.js';
+import { braveSearchSkill } from './features/skills/integrations/brave_search.js';
 
 // Init Singletons ──────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
   skillManager.register(taskMasterSkill);
   skillManager.register(agentOrchestratorSkill);
   skillManager.register(webBrowserSkill);
+  skillManager.register(braveSearchSkill);
   
   console.log('');
 

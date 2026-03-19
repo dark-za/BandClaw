@@ -27,8 +27,25 @@ export function initDatabase(): void {
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS vram (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      frequency INTEGER DEFAULT 1,
+      last_accessed DATETIME DEFAULT CURRENT_TIMESTAMP,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS usage_stats (
+      key TEXT PRIMARY KEY,
+      count INTEGER DEFAULT 0
+    );
+
     CREATE INDEX IF NOT EXISTS idx_conversations_user
       ON conversations(user_id, timestamp);
+    
+    CREATE INDEX IF NOT EXISTS idx_vram_user
+      ON vram(user_id, last_accessed);
   `);
 
   console.log('✅ Database initialized');
@@ -82,6 +99,74 @@ export function clearHistory(userId: string): number {
   const stmt = db.prepare(`DELETE FROM conversations WHERE user_id = ?`);
   const result = stmt.run(userId);
   return result.changes;
+}
+
+export function deleteAfterMessage(userId: string, lastUserId: number): number {
+  const stmt = db.prepare(`DELETE FROM conversations WHERE user_id = ? AND id > ?`);
+  const result = stmt.run(userId, lastUserId);
+  return result.changes;
+}
+
+export function getLastUserMessage(userId: string): { id: number; content: string } | null {
+  const stmt = db.prepare(`
+    SELECT id, content FROM conversations
+    WHERE user_id = ? AND role = 'user'
+    ORDER BY timestamp DESC LIMIT 1
+  `);
+  const row = stmt.get(userId) as { id: number; content: string } | undefined;
+  return row || null;
+}
+
+// ─── VRAM System ────────────────────────────────────────────────
+
+export interface VramEntry {
+  id: number;
+  summary: string;
+  frequency: number;
+}
+
+export function saveVram(userId: string, summary: string): void {
+  // Try to find if an exact matching summary exists (to increase frequency)
+  // or just insert a new one. We'll optimize by always creating a new VRAM block
+  // but if we want to update, we can do it via a quick match.
+  const stmt = db.prepare(`
+    INSERT INTO vram (user_id, summary) VALUES (?, ?)
+  `);
+  stmt.run(userId, summary);
+}
+
+export function touchVram(id: number): void {
+  const stmt = db.prepare(`UPDATE vram SET frequency = frequency + 1, last_accessed = CURRENT_TIMESTAMP WHERE id = ?`);
+  stmt.run(id);
+}
+
+export function getTopVram(userId: string, limit = 3): VramEntry[] {
+  const stmt = db.prepare(`
+    SELECT id, summary, frequency FROM vram
+    WHERE user_id = ?
+    ORDER BY last_accessed DESC, frequency DESC
+    LIMIT ?
+  `);
+  const rows = stmt.all(userId, limit) as VramEntry[];
+  // Automatically touch them so they stay relevant if fetched
+  rows.forEach(r => touchVram(r.id));
+  return rows;
+}
+
+// ─── Usage Stats System ─────────────────────────────────────────
+
+export function incrementStat(key: string): void {
+  const stmt = db.prepare(`
+    INSERT INTO usage_stats (key, count) VALUES (?, 1)
+    ON CONFLICT(key) DO UPDATE SET count = count + 1
+  `);
+  stmt.run(key);
+}
+
+export function getStat(key: string): number {
+  const stmt = db.prepare(`SELECT count FROM usage_stats WHERE key = ?`);
+  const row = stmt.get(key) as { count: number } | undefined;
+  return row?.count ?? 0;
 }
 
 // ─── Persistent Memory ──────────────────────────────────────────

@@ -1,9 +1,13 @@
 import { Bot, Context, InputFile } from 'grammy';
 import os from 'node:os';
+import { exec } from 'node:child_process';
+import util from 'node:util';
 import { config } from './config.js';
-import { clearHistory } from './db.js';
-import { fetchAvailableModels, switchModelById, getActiveModelName, getActiveModel, switchModel } from '../services/llm.js';
+import { clearHistory, deleteAfterMessage, getLastUserMessage, saveVram, getStat, getHistory } from './db.js';
+import { fetchAvailableModels, switchModelById, getActiveModelName, getActiveModel, switchModel, chat } from '../services/llm.js';
 import { runAgent } from '../core/agent.js';
+
+const execAsync = util.promisify(exec);
 import { skillManager } from '../features/skills/manager.js';
 import { MODEL_MAP, MODEL_NAMES } from '../interfaces/types.js';
 
@@ -25,7 +29,13 @@ bot.use(async (ctx: Context, next) => {
 async function registerCommands(): Promise<void> {
   await bot.api.setMyCommands([
     { command: 'start', description: 'Initiate interaction with BandClaw' },
-    { command: 'llm', description: 'Switch LLM model (/llm 1, 2, or 3)' },
+    { command: 'save', description: 'Summarize chat to VRAM' },
+    { command: 'retry', description: 'Regenerate the last answer' },
+    { command: 'bash', description: 'Directly execute OS command' },
+    { command: 'reboot', description: 'Reboot PM2 process' },
+    { command: 'ping', description: 'Test LM Studio connection' },
+    { command: 'net', description: 'Show search usage stats' },
+    { command: 'llm', description: 'Switch LLM model' },
     { command: 'clear', description: 'Clear conversation history' },
     { command: 's', description: 'Show system status' },
     { command: 'skills', description: 'List all skill categories' },
@@ -105,6 +115,97 @@ bot.command('clear', async (ctx) => {
   const userId = String(ctx.from!.id);
   const deleted = clearHistory(userId);
   await ctx.reply(`🗑️ Conversation cleared. Removed ${deleted} messages.`);
+});
+
+// ─── Advanced Commands ──────────────────────────────────────────
+
+bot.command('save', async (ctx) => {
+  const userId = String(ctx.from!.id);
+  await ctx.replyWithChatAction('typing');
+  
+  const history = getHistory(userId, 10);
+  if (history.length === 0) {
+    await ctx.reply('❌ No recent messages to save.');
+    return;
+  }
+
+  const messages: any[] = history.map(h => ({ role: h.role, content: h.content ?? '' }));
+  messages.push({ role: 'user', content: 'You are an internal memory compiler. Condense the core facts, context, and important entities of this conversation into a single, highly dense and factual paragraph (or bullet points) in Arabic. Do not add any conversational filler. Only the pure facts.' });
+
+  try {
+    const response = await chat(messages);
+    if (response.content) {
+      saveVram(userId, response.content.trim());
+      await ctx.reply('💾 *تم حفظ السياق بنجاح في الـ VRAM*\\n\\n' + response.content, { parse_mode: 'Markdown' });
+    } else {
+      await ctx.reply('❌ Failed to generate memory summary.');
+    }
+  } catch (err) {
+    await ctx.reply(`❌ Save error: \${err}`);
+  }
+});
+
+bot.command('retry', async (ctx) => {
+  const userId = String(ctx.from!.id);
+  
+  const lastUserMsg = getLastUserMessage(userId);
+  if (!lastUserMsg) {
+    await ctx.reply('❌ No previous message found to retry.');
+    return;
+  }
+
+  const deleted = deleteAfterMessage(userId, lastUserMsg.id);
+  await ctx.reply(`🔄 Retrying... (Deleted \${deleted} previous intermediate responses)`);
+  await ctx.replyWithChatAction('typing');
+  
+  try {
+    const reply = await runAgent(lastUserMsg.content, userId);
+    await sendLongMessage(ctx, reply);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await ctx.reply(`⚠️ Error: \${message}`);
+  }
+});
+
+bot.command('bash', async (ctx) => {
+  const cmd = ctx.match?.trim();
+  if (!cmd) {
+    await ctx.reply('❌ Usage: `/bash <command>`', { parse_mode: 'Markdown' });
+    return;
+  }
+  
+  try {
+    const { stdout, stderr } = await execAsync(cmd, { timeout: 15000 });
+    const output = stdout || stderr || 'Command executed without output.';
+    await sendLongMessage(ctx, `🖥️ *Bash Execution*\\n\\n\`\`\`bash\\n\${output}\\n\`\`\``);
+  } catch (err: any) {
+    await sendLongMessage(ctx, `❌ *Bash Error*\\n\\n\`\`\`bash\\n\${err.message}\\n\${err.stderr ?? ''}\\n\`\`\``);
+  }
+});
+
+bot.command('ping', async (ctx) => {
+  const start = Date.now();
+  try {
+    const res = await fetch('http://192.168.1.124:1234/v1/models', { signal: AbortSignal.timeout(5000) });
+    const latency = Date.now() - start;
+    await ctx.reply(`🏓 *Pong!*\\n\\nStatus: \`\${res.status}\`\\nLatency: \`\${latency} ms\``, { parse_mode: 'Markdown' });
+  } catch (err: any) {
+    await ctx.reply(`❌ Ping failed.\\nError: \${err.message}`);
+  }
+});
+
+bot.command('reboot', async (ctx) => {
+  await ctx.reply('⚙️ Rebooting PM2 process...');
+  try {
+    await execAsync('pm2 restart bandclaw');
+  } catch (err: any) {
+    await ctx.reply(`❌ Reboot failed: \${err.message}`);
+  }
+});
+
+bot.command('net', async (ctx) => {
+  const searches = getStat('net_searches');
+  await ctx.reply(`🌐 *Network Statistics*\\n\\nTotal Brave API Searches: \`\${searches}\``, { parse_mode: 'Markdown' });
 });
 
 // ─── /s — Status ───────────────────────────────────────────────
