@@ -60,11 +60,36 @@ async function handleRestart() {
 }
 
 async function handleUpdate() {
+  info('Starting resilient upgrade pipeline...');
+
+  try {
+    info('Stashing local modifications (if any)...');
+    runCommand('git stash push -m "bandclaw_auto_stash_before_upgrade"', true);
+  } catch (e) {
+    // ignore if nothing to stash
+  }
+
   info('Pulling latest changes from Git...');
-  runCommand('git pull --ff-only');
+  try {
+    runCommand('git pull --rebase');
+  } catch (e) {
+    err('Failed to pull from remote. Please resolve Git conflicts manually or run: git reset --hard origin/main');
+  }
+
+  try {
+    info('Restoring local modifications...');
+    runCommand('git stash pop', true);
+  } catch (e) {
+    console.log(`\${YELLOW}Note: Some local changes had conflicts and remain in the stash.\${RESET}`);
+  }
   
-  info('Installing dependencies...');
-  runCommand('npm install');
+  info('Installing dependencies (Clean Install)...');
+  try {
+    runCommand('npm ci');
+  } catch (e) {
+    info('Clean install failed, falling back to standard install...');
+    runCommand('npm install');
+  }
   
   info('Rebuilding TypeScript source...');
   runCommand('npm run build');
