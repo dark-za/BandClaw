@@ -164,7 +164,7 @@ else
   # ── Telegram Bot Token ──
   echo -e "${BOLD}1) Telegram Bot Token${NC}"
   echo -e "   Get one from ${CYAN}@BotFather${NC} on Telegram"
-  read -rp "   Token: " TELEGRAM_TOKEN
+  read -rp "   Token: " TELEGRAM_TOKEN < /dev/tty
   if [ -z "$TELEGRAM_TOKEN" ]; then
     err "Telegram Bot Token is required."
   fi
@@ -174,7 +174,7 @@ else
   echo -e "${BOLD}2) Allowed Telegram User IDs${NC}"
   echo -e "   Comma-separated list of numeric IDs authorized to use the bot"
   echo -e "   Find yours via ${CYAN}@userinfobot${NC} on Telegram"
-  read -rp "   User IDs: " ALLOWED_IDS
+  read -rp "   User IDs: " ALLOWED_IDS < /dev/tty
   if [ -z "$ALLOWED_IDS" ]; then
     err "At least one user ID is required."
   fi
@@ -183,7 +183,7 @@ else
   echo ""
   echo -e "${BOLD}3) Local LLM API URL${NC}"
   echo -e "   Your LM Studio API endpoint"
-  read -rp "   URL [http://192.168.1.124:1234/v1]: " LLM_URL
+  read -rp "   URL [http://192.168.1.124:1234/v1]: " LLM_URL < /dev/tty
   LLM_URL="${LLM_URL:-http://192.168.1.124:1234/v1}"
 
   # ── Default Model ──
@@ -193,7 +193,7 @@ else
   echo -e "     1) deepseek/deepseek-r1-0528-qwen3-8b"
   echo -e "     2) qwen2.5-7b-instruct-tool-planning-v0.1"
   echo -e "     3) qwen3.5-9b-uncensored-hauhaucs-aggressive"
-  read -rp "   Choose [3]: " MODEL_CHOICE
+  read -rp "   Choose [3]: " MODEL_CHOICE < /dev/tty
   MODEL_CHOICE="${MODEL_CHOICE:-3}"
   case "$MODEL_CHOICE" in
     1) DEFAULT_MODEL="deepseek/deepseek-r1-0528-qwen3-8b" ;;
