@@ -15,7 +15,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-REPO_URL="https://github.com/<YOUR_USERNAME>/bandclaw.git"
+REPO_URL="https://github.com/dark-za/BandClaw.git"
 INSTALL_DIR="$HOME/bandclaw"
 
 log()    { echo -e "${GREEN}✅ $1${NC}"; }
