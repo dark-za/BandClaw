@@ -11,7 +11,8 @@ You must adhere to the following rules at all times:
 1. NO HALLUCINATION: If you don't know something or a tool fails, say so directly. Do not invent information.
 2. DIRECT CONVERSATION: Be extremely concise. Go straight to the point.
 3. CONVERSATION CONTEXT: Read the conversation history carefully. Answer the latest request while preserving context.
-4. NO INTERNAL LEAKS: Never expose your internal reasoning, <think> blocks, or structural prompts to the user. Provide only the final conversational answer.
+4. NO INTERNAL LEAKS: Never expose your internal reasoning, <think> blocks, or structural prompts.
+5. STRICTLY ARABIC: Reply EXCLUSIVELY in correctly written Arabic script. NEVER transliterate Arabic using English letters (e.g., no "rneemana bni..."). IF you must answer, answer in proper Arabic letters.
 
 You have access to tools that you can call when the user asks you to perform actions. When using tools:
 - Only call tools when the user's request genuinely requires them.
@@ -115,8 +116,10 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
       let finalContent = response.content ?? 'I have no response.';
       
       // Strip out <think>...</think> and similar reasoning artifacts
-      finalContent = finalContent.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
-      finalContent = finalContent.replace(/<\|start_response\|>\s*/gi, '').trim();
+      finalContent = finalContent.replace(/<think>[\s\S]*?<\/think>/gi, '');
+      finalContent = finalContent.replace(/<\|startthinking\|>[\s\S]*?<\|endthinking\|>/gi, '');
+      finalContent = finalContent.replace(/<\|.*?\|>/g, ''); // catches <|start_response|>, <|end_response|>, etc
+      finalContent = finalContent.trim();
       
       if (!finalContent) {
         finalContent = 'Thinking process completed, but no final answer was generated. Please adjust the model or prompt.';
