@@ -8,19 +8,19 @@ const BLOCKLIST = ['.env', 'memory.db', 'node_modules', 'dist'];
 
 export const writeFileSkill: Skill = {
   name: 'write_file',
-  description: 'Writes or appends text to a file within the sandbox directory.',
+  description: 'Writes or appends text to any file on the system.',
   category: 'filesystem',
   schema: {
     type: 'function',
     function: {
       name: 'write_file',
-      description: 'Writes or appends text to a file within the sandbox directory. Maximum write chunk is 512KB. Parent directories are created automatically.',
+      description: 'Writes or appends text to any file on the system using absolute or relative paths. Maximum write chunk is 512KB. Parent directories are created automatically.',
       parameters: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description: 'Relative path to the file to write, e.g., "notes.txt" or "logs/new.log".',
+            description: 'Path (absolute or relative) to the file to write, e.g., "notes.txt" or "/var/log/custom.log".',
           },
           content: {
             type: 'string',
@@ -45,11 +45,7 @@ export const writeFileSkill: Skill = {
       return JSON.stringify({ error: `Access denied: Target path contains blocked keyword.` });
     }
 
-    // Security check: resolve path and ensure it's inside sandbox
     const resolvedPath = path.resolve(config.sandboxRoot, relativePath);
-    if (!resolvedPath.startsWith(path.resolve(config.sandboxRoot))) {
-      return JSON.stringify({ error: 'Access denied: Path is outside the sandbox directory.' });
-    }
 
     const byteLength = Buffer.byteLength(content, 'utf8');
     if (byteLength > MAX_WRITE_SIZE) {

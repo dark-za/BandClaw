@@ -8,19 +8,19 @@ const MAX_READ_SIZE = 1024 * 1024; // 1MB
 
 export const readFileSkill: Skill = {
   name: 'read_file',
-  description: 'Reads the contents of a file within the sandbox directory.',
+  description: 'Reads the contents of any file on the system.',
   category: 'filesystem',
   schema: {
     type: 'function',
     function: {
       name: 'read_file',
-      description: 'Reads the contents of a file within the sandbox directory. Maximum file size is 1MB.',
+      description: 'Reads the contents of any file on the system. Provide absolute or relative paths. Maximum file size is 1MB.',
       parameters: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description: 'Relative path to the file to read, e.g., "notes.txt" or "logs/error.log".',
+            description: 'Path (absolute or relative) to the file to read, e.g., "notes.txt" or "/etc/hosts".',
           },
         },
         required: ['path'],
@@ -28,13 +28,7 @@ export const readFileSkill: Skill = {
     },
   },
   execute: async (params) => {
-    const relativePath = params.path as string;
-
-    // Security check: resolve path and ensure it's inside sandbox
-    const resolvedPath = path.resolve(config.sandboxRoot, relativePath);
-    if (!resolvedPath.startsWith(path.resolve(config.sandboxRoot))) {
-      return JSON.stringify({ error: 'Access denied: Path is outside the sandbox directory.' });
-    }
+    const resolvedPath = path.resolve(config.sandboxRoot, params.path as string);
 
     try {
       await access(resolvedPath, constants.R_OK);

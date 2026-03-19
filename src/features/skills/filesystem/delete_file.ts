@@ -7,19 +7,19 @@ const BLOCKLIST = ['.env', 'memory.db', 'node_modules', 'dist', '.git'];
 
 export const deleteFileSkill: Skill = {
   name: 'delete_file',
-  description: 'Deletes a specified file within the sandbox directory.',
+  description: 'Deletes a specified file anywhere on the system.',
   category: 'filesystem',
   schema: {
     type: 'function',
     function: {
       name: 'delete_file',
-      description: 'Deletes a specified file within the sandbox directory. Cannot delete directories, only regular files.',
+      description: 'Deletes any regular file on the system using an absolute or relative path. Cannot delete directories.',
       parameters: {
         type: 'object',
         properties: {
           path: {
             type: 'string',
-            description: 'Relative path to the file to delete.',
+            description: 'Path (absolute or relative) to the file to delete.',
           },
         },
         required: ['path'],
@@ -34,11 +34,7 @@ export const deleteFileSkill: Skill = {
       return JSON.stringify({ error: `Access denied: Target path contains blocked keyword.` });
     }
 
-    // Security check: resolve path and ensure it's inside sandbox
     const resolvedPath = path.resolve(config.sandboxRoot, relativePath);
-    if (!resolvedPath.startsWith(path.resolve(config.sandboxRoot))) {
-      return JSON.stringify({ error: 'Access denied: Path is outside the sandbox directory.' });
-    }
 
     try {
       const fileStat = await stat(resolvedPath);
