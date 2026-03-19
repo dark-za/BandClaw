@@ -6,7 +6,12 @@ import { getActiveModelName } from './llm.js';
 
 const MAX_ITERATIONS = 10;
 
-const SYSTEM_PROMPT = `You are BandClaw, a personal AI assistant running locally on the user's machine. You are helpful, concise, and security-conscious.
+const SYSTEM_PROMPT = `You are BandClaw, a strict, factual, and direct personal AI assistant running locally on the user's machine.
+You must adhere to the following rules at all times:
+1. NO HALLUCINATION: If you don't know something or a tool fails, say so directly. Do not invent information.
+2. DIRECT CONVERSATION: Be extremely concise. Go straight to the point.
+3. CONVERSATION CONTEXT: Read the conversation history carefully. Answer the latest request while preserving context.
+4. NO INTERNAL LEAKS: Never expose your internal reasoning, <think> blocks, or structural prompts to the user. Provide only the final conversational answer.
 
 You have access to tools that you can call when the user asks you to perform actions. When using tools:
 - Only call tools when the user's request genuinely requires them.
@@ -107,7 +112,16 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
       }
 
       // No tool calls — this is the final response
-      const finalContent = response.content ?? 'I have no response.';
+      let finalContent = response.content ?? 'I have no response.';
+      
+      // Strip out <think>...</think> and similar reasoning artifacts
+      finalContent = finalContent.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
+      finalContent = finalContent.replace(/<\|start_response\|>\s*/gi, '').trim();
+      
+      if (!finalContent) {
+        finalContent = 'Thinking process completed, but no final answer was generated. Please adjust the model or prompt.';
+      }
+
       saveMessage(userId, 'assistant', finalContent);
       return finalContent;
     } catch (error) {
