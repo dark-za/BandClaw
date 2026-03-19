@@ -16,6 +16,16 @@ import { listDirectorySkill } from './features/skills/filesystem/list_directory.
 import { searchMarkdownSkills } from './features/skills/markdown/search_skills.js';
 import { loadMarkdownSkill } from './features/skills/markdown/load_skill.js';
 
+// Integrations (Converted from MD)
+import { dockerManagerSkill } from './features/skills/integrations/docker_manager.js';
+import { n8nPrCreatorSkill } from './features/skills/integrations/n8n_pr_creator.js';
+import { gogWorkspaceSkill } from './features/skills/integrations/gog_workspace.js';
+import { context7McpSkill } from './features/skills/integrations/context7_mcp.js';
+import { networkScannerSkill } from './features/skills/integrations/network_scanner.js';
+import { trendRadarSkill } from './features/skills/integrations/trend_radar.js';
+import { taskMasterSkill } from './features/skills/integrations/task_master.js';
+import { agentOrchestratorSkill } from './features/skills/integrations/orchestrator.js';
+
 // Init Singletons ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -40,6 +50,17 @@ async function main(): Promise<void> {
   skillManager.register(listDirectorySkill);
   skillManager.register(searchMarkdownSkills);
   skillManager.register(loadMarkdownSkill);
+
+  // Register New Integrations
+  skillManager.register(dockerManagerSkill);
+  skillManager.register(n8nPrCreatorSkill);
+  skillManager.register(gogWorkspaceSkill);
+  skillManager.register(context7McpSkill);
+  skillManager.register(networkScannerSkill);
+  skillManager.register(trendRadarSkill);
+  skillManager.register(taskMasterSkill);
+  skillManager.register(agentOrchestratorSkill);
+  
   console.log('');
 
   // 3. Start webhook server
