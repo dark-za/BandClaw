@@ -419,6 +419,7 @@ export async function startBot(): Promise<void> {
   });
 
   bot.start({
+    drop_pending_updates: true,
     onStart: () => {
       console.log('🐺 BandClaw is online! (Telegram long polling)');
     },
