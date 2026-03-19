@@ -95,7 +95,11 @@ async function handleUpdate() {
   runCommand('npm run build');
   
   info('Restarting BandClaw...');
-  runCommand('pm2 restart bandclaw');
+  try {
+    runCommand('pm2 restart bandclaw');
+  } catch (e) {
+    console.log(`\${YELLOW}⚠️ Could not restart PM2 process "bandclaw". It might not be running or is named differently.\${RESET}`);
+  }
   
   log('BandClaw updated successfully!');
 }
