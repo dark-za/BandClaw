@@ -25,6 +25,7 @@ import { networkScannerSkill } from './features/skills/integrations/network_scan
 import { trendRadarSkill } from './features/skills/integrations/trend_radar.js';
 import { taskMasterSkill } from './features/skills/integrations/task_master.js';
 import { agentOrchestratorSkill } from './features/skills/integrations/orchestrator.js';
+import { webBrowserSkill } from './features/skills/integrations/web_browser.js';
 
 // Init Singletons ──────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
   skillManager.register(trendRadarSkill);
   skillManager.register(taskMasterSkill);
   skillManager.register(agentOrchestratorSkill);
+  skillManager.register(webBrowserSkill);
   
   console.log('');
 
