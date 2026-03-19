@@ -146,6 +146,10 @@ header "Step 4/6 — Building TypeScript"
 npm run build 2>&1 | tail -3
 log "Build complete"
 
+info "Linking CLI globally..."
+$SUDO npm link > /dev/null 2>&1 || true
+log "CLI 'bandclaw' installed globally"
+
 # Create required directories
 mkdir -p safe_scripts logs
 

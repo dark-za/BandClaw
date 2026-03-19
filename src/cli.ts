@@ -185,7 +185,7 @@ Commands:
   status    View PM2 process status
   logs      Tail process logs
   restart   Restart the BandClaw agent
-  update    Pull code, rebuild, and restart
+  update    Pull code, rebuild, and restart (alias: upgrade)
   config    Interactively set up .env
   models    List available LLM models from LM Studio
   uninstall Stop processes and prepare for deletion
@@ -207,6 +207,7 @@ async function main() {
       await handleRestart();
       break;
     case 'update':
+    case 'upgrade':
       await handleUpdate();
       break;
     case 'config':

@@ -93,6 +93,11 @@ export async function chat(
 
   try {
     const response = await client.chat.completions.create(params);
+    
+    if (!response.choices || response.choices.length === 0) {
+      throw new Error(`LLM returned empty data. Please check if your LLM URL and Model ID are correct.`);
+    }
+
     const choice = response.choices[0];
 
     return {
