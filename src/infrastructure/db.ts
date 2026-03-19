@@ -101,6 +101,28 @@ export function clearHistory(userId: string): number {
   return result.changes;
 }
 
+export function getOldestMessagesToCompress(userId: string, limit: number): {id: number, role: string, content: string | null}[] {
+  const countStmt = db.prepare(`SELECT COUNT(*) as c FROM conversations WHERE user_id = ?`);
+  const { c } = countStmt.get(userId) as { c: number };
+  if (c <= limit + 10) return []; // Leave at least 10 recent messages alive
+
+  const stmt = db.prepare(`
+    SELECT id, role, content FROM conversations
+    WHERE user_id = ? AND role != 'tool'
+    ORDER BY timestamp ASC
+    LIMIT ?
+  `);
+  return stmt.all(userId, limit) as any;
+}
+
+export function deleteMessagesByIds(ids: number[]): number {
+  if (ids.length === 0) return 0;
+  const placeholders = ids.map(() => '?').join(',');
+  const stmt = db.prepare(`DELETE FROM conversations WHERE id IN (\${placeholders})`);
+  const result = stmt.run(...ids);
+  return result.changes;
+}
+
 export function deleteAfterMessage(userId: string, lastUserId: number): number {
   const stmt = db.prepare(`DELETE FROM conversations WHERE user_id = ? AND id > ?`);
   const result = stmt.run(userId, lastUserId);

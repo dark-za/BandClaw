@@ -3,30 +3,45 @@ import { skillManager } from './features/skills/manager.js';
 import { startBot } from './infrastructure/bot.js';
 import { startWebhookServer } from './infrastructure/webhook.js';
 
-// ─── Import Skills ─────────────────────────────────────────────
-import { getCurrentTime } from './features/skills/core/get_current_time.js';
-import { readHostSystem } from './features/skills/server/read_host_system.js';
-import { runSafeScript } from './features/skills/server/run_safe_script.js';
-import { readFileSkill } from './features/skills/filesystem/read_file.js';
-import { writeFileSkill } from './features/skills/filesystem/write_file.js';
-import { deleteFileSkill } from './features/skills/filesystem/delete_file.js';
-import { listDirectorySkill } from './features/skills/filesystem/list_directory.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { Skill } from './interfaces/types.js';
 
-// Markdown Skills
-import { searchMarkdownSkills } from './features/skills/markdown/search_skills.js';
-import { loadMarkdownSkill } from './features/skills/markdown/load_skill.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Integrations (Converted from MD)
-import { dockerManagerSkill } from './features/skills/integrations/docker_manager.js';
-import { n8nPrCreatorSkill } from './features/skills/integrations/n8n_pr_creator.js';
-import { gogWorkspaceSkill } from './features/skills/integrations/gog_workspace.js';
-import { context7McpSkill } from './features/skills/integrations/context7_mcp.js';
-import { networkScannerSkill } from './features/skills/integrations/network_scanner.js';
-import { trendRadarSkill } from './features/skills/integrations/trend_radar.js';
-import { taskMasterSkill } from './features/skills/integrations/task_master.js';
-import { agentOrchestratorSkill } from './features/skills/integrations/orchestrator.js';
-import { webBrowserSkill } from './features/skills/integrations/web_browser.js';
-import { braveSearchSkill } from './features/skills/integrations/brave_search.js';
+async function loadAllSkills(dirPath: string) {
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      
+      if (entry.isDirectory()) {
+         if (entry.name !== 'docs') {
+           await loadAllSkills(fullPath);
+         }
+      } else if (entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts'))) {
+        if (entry.name.includes('manager') || entry.name.includes('types')) continue;
+        
+        try {
+          const importUrl = pathToFileURL(fullPath).href;
+          const module = await import(importUrl);
+          for (const key in module) {
+            const exp = module[key];
+            if (exp && typeof exp === 'object' && 'name' in exp && 'execute' in exp && 'schema' in exp) {
+               skillManager.register(exp as Skill);
+            }
+          }
+        } catch (err) {
+          console.error(`❌ Failed to inject skill module: \${entry.name} - \${String(err)}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`❌ Skill Scanning Failed:`, err);
+  }
+}
 
 // Init Singletons ──────────────────────────────────────────────────────
 
@@ -41,30 +56,11 @@ async function main(): Promise<void> {
   // 1. Initialize database
   initDatabase();
 
-  // 2. Register skills
-  console.log('📦 Loading Skill Tree...');
-  skillManager.register(getCurrentTime);
-  skillManager.register(readHostSystem);
-  skillManager.register(runSafeScript);
-  skillManager.register(readFileSkill);
-  skillManager.register(writeFileSkill);
-  skillManager.register(deleteFileSkill);
-  skillManager.register(listDirectorySkill);
-  skillManager.register(searchMarkdownSkills);
-  skillManager.register(loadMarkdownSkill);
-
-  // Register New Integrations
-  skillManager.register(dockerManagerSkill);
-  skillManager.register(n8nPrCreatorSkill);
-  skillManager.register(gogWorkspaceSkill);
-  skillManager.register(context7McpSkill);
-  skillManager.register(networkScannerSkill);
-  skillManager.register(trendRadarSkill);
-  skillManager.register(taskMasterSkill);
-  skillManager.register(agentOrchestratorSkill);
-  skillManager.register(webBrowserSkill);
-  skillManager.register(braveSearchSkill);
-  
+  // 2. Register skills dynamically
+  console.log('📦 Engaging Dynamic Deep-Scan Loader...');
+  const skillsDir = path.join(__dirname, 'features/skills');
+  await loadAllSkills(skillsDir);
+  console.log(`✅ Loaded \${skillManager.getActiveSkillNames().length} native skills dynamically.`);
   console.log('');
 
   // 3. Start webhook server

@@ -98,9 +98,25 @@ export class SkillManager {
     try {
       return await skill.execute(args);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`❌ Skill execution error [${name}]:`, message);
-      return JSON.stringify({ error: `Tool execution failed: ${message}` });
+      let message = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Skill execution error [\${name}]:`, message);
+
+      const msgLower = message.toLowerCase();
+      if (msgLower.includes('enoent') || msgLower.includes('no such file')) {
+        message = 'الملف أو المسار المطلوب غير موجود على النظام.';
+      } else if (msgLower.includes('eacces') || msgLower.includes('permission denied')) {
+        message = 'تم رفض الوصول. لا تملك صلاحيات كافية لتنفيذ هذا الإجراء.';
+      } else if (msgLower.includes('econnrefused')) {
+        message = 'فشل الاتصال بالخادم المطلوب. السيرفر لا يرد.';
+      } else if (msgLower.includes('timeout')) {
+        message = 'انتهى وقت العملية (Timeout). الخادم بطيء أو غير متصل.';
+      } else if (msgLower.includes('command not found') || msgLower.includes('is not recognized')) {
+        message = 'الأمر المطلوب غير مثبت في النظام الخادم.';
+      } else {
+        message = 'حدث خطأ تقني غير متوقع أثناء تنفيذ المهارة: ' + message;
+      }
+
+      return JSON.stringify({ error: `فشل التنفيذ: \${message}` });
     }
   }
 }

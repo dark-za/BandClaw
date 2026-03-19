@@ -1,6 +1,6 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js';
 import { chat } from '../services/llm.js';
-import { saveMessage, getHistory, getTopVram } from '../infrastructure/db.js';
+import { saveMessage, getHistory, getTopVram, getOldestMessagesToCompress, deleteMessagesByIds, saveVram } from '../infrastructure/db.js';
 import { skillManager } from '../features/skills/manager.js';
 import { getActiveModelName } from '../services/llm.js';
 import { stripReasoningTags, parseTextToolCall } from './parsers/tool_parser.js';
@@ -70,7 +70,30 @@ function storedToMessage(stored: { role: string; content: string | null; tool_ca
   } as ChatCompletionMessageParam;
 }
 
+// Background VRAM Engine Setup
+async function triggerVramCompression(userId: string) {
+  try {
+    const toCompress = getOldestMessagesToCompress(userId, 15);
+    if (toCompress.length === 0) return;
+
+    const textToSummarize = toCompress.map(m => `\${m.role}: \${m.content}`).join('\\n');
+    const prompt = `You are a core background VRAM compressor. Summarize the following historical conversation into highly dense factual data points in Arabic. Omit pleasantries. Just pure facts:\\n\\n\${textToSummarize}`;
+
+    const response = await chat([{ role: 'user', content: prompt }]);
+    if (response.content) {
+      saveVram(userId, response.content.trim());
+      deleteMessagesByIds(toCompress.map(m => m.id));
+      console.log(`[VRAM Engine] Compressed \${toCompress.length} messages into VRAM for user \${userId}.`);
+    }
+  } catch (err) {
+    console.error(`[VRAM Engine] Compression failed for user \${userId}:`, err);
+  }
+}
+
 export async function runAgent(userMessage: string, userId: string): Promise<string> {
+  // Trigger background compression (fire and forget to not block user interaction)
+  triggerVramCompression(userId).catch(console.error);
+
   // Save user message to DB
   saveMessage(userId, 'user', userMessage);
 
