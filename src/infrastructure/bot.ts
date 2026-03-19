@@ -2,23 +2,52 @@ import { Bot, Context, InputFile } from 'grammy';
 import os from 'node:os';
 import { exec } from 'node:child_process';
 import util from 'node:util';
+import dns from 'node:dns';
+import https from 'node:https';
 import { config } from './config.js';
 import { clearHistory, deleteAfterMessage, getLastUserMessage, saveVram, getStat, getHistory } from './db.js';
-import { fetchAvailableModels, switchModelById, getActiveModelName, getActiveModel, switchModel, chat } from '../services/llm.js';
+import { fetchAvailableModels, switchModelById, switchModelByIndex, getActiveModelName, getActiveModel, chat } from '../services/llm.js';
 import { runAgent } from '../core/agent.js';
+import { skillManager } from '../features/skills/manager.js';
 
 const execAsync = util.promisify(exec);
-import { skillManager } from '../features/skills/manager.js';
-import { MODEL_MAP, MODEL_NAMES } from '../interfaces/types.js';
 
-const bot = new Bot(config.telegramBotToken);
+// ─── DNS Fix ──────────────────────────────────────────────────
+// Force dns.resolve* to use public DNS (fixes ENOTFOUND api.telegram.org)
+dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+
+function publicDnsLookup(hostname: string, options: any, callback: any): void {
+  if (typeof options === 'function') {
+    callback = options;
+    options = {};
+  }
+  dns.resolve4(hostname, (err, addresses) => {
+    if (!err && addresses && addresses.length > 0) {
+      return callback(null, addresses[0], 4);
+    }
+    dns.lookup(hostname, { family: 4 }, callback);
+  });
+}
+
+const telegramAgent = new https.Agent({
+  keepAlive: true,
+  lookup: publicDnsLookup as any,
+});
+
+const bot = new Bot(config.telegramBotToken, {
+  client: {
+    baseFetchConfig: {
+      agent: telegramAgent,
+      compress: true,
+    },
+  },
+});
 
 // ─── Security Middleware ───────────────────────────────────────
 
 bot.use(async (ctx: Context, next) => {
   const userId = ctx.from?.id;
   if (!userId || !config.allowedUserIds.includes(userId)) {
-    // Silently ignore unauthorized users
     return;
   }
   await next();
@@ -52,34 +81,43 @@ bot.command('start', async (ctx) => {
     `Hey ${name}! I'm your personal AI agent running locally.\n\n` +
     `*Active Model:* \`${getActiveModelName()}\`\n\n` +
     `*Commands:*\n` +
-    `/llm 1|2|3 — Switch model\n` +
+    `/llm — List & switch models\n` +
     `/clear — Clear conversation\n` +
     `/s — System status\n` +
-    `/skills — Skill tree\n` +
-    `/skill enable|disable <category>\n\n` +
+    `/skills — Skill tree\n\n` +
     `Send me a message to start chatting!`,
     { parse_mode: 'Markdown' },
   );
 });
 
-// ─── /llm ──────────────────────────────────────────────────────
+// ─── /llm — Dynamic Model Management ──────────────────────────
 
 bot.command('llm', async (ctx) => {
   const arg = ctx.match?.trim();
 
+  // /llm — show all models from LM Studio
   if (!arg) {
     await ctx.replyWithChatAction('typing');
     try {
-      const models = await fetchAvailableModels();
-      let list = '🧠 *Available Models (Live):*\n\n';
-      
-      models.forEach((m) => {
+      const models = await fetchAvailableModels(true);
+
+      if (models.length === 0) {
+        await ctx.reply('⚠️ لا توجد نماذج محملة في LM Studio.\nقم بتحميل نموذج من واجهة LM Studio أولاً.');
+        return;
+      }
+
+      let list = '🧠 *النماذج المتاحة (LM Studio):*\n\n';
+      models.forEach((m, i) => {
+        const num = i + 1;
         const active = m.id === getActiveModel() ? ' ✅' : '';
-        const name = m.name !== m.id ? m.name : (m.id.split('/').pop() ?? m.id);
-        list += `\`/llm set ${m.id}\`\n— ${name}${active}\n\n`;
+        list += `*[${num}]* ${m.name}${active}\n\`${m.id}\`\n\n`;
       });
       
-      list += `_Shortcuts: /llm 1 | 2 | 3_\n_Refresh: /llm refresh_`;
+      list += `_الاستخدام:_\n`;
+      list += `\`/llm 1\` — تبديل بالرقم\n`;
+      list += `\`/llm ibm/granite-4-h-tiny\` — تبديل بالـ ID\n`;
+      list += `\`/llm refresh\` — تحديث القائمة`;
+
       await ctx.reply(list, { parse_mode: 'Markdown' });
     } catch (error) {
        await ctx.reply(`❌ Error fetching models: ${error}`);
@@ -87,25 +125,33 @@ bot.command('llm', async (ctx) => {
     return;
   }
 
+  // /llm refresh
   if (arg.toLowerCase() === 'refresh') {
     await ctx.replyWithChatAction('typing');
-    await fetchAvailableModels(true);
-    await ctx.reply('✅ Model list refreshed. Send /llm to view.');
+    const models = await fetchAvailableModels(true);
+    await ctx.reply(`✅ تم تحديث القائمة. عدد النماذج: ${models.length}\nأرسل /llm للعرض.`);
     return;
   }
 
-  if (arg.toLowerCase().startsWith('set ')) {
-    const modelId = arg.substring(4).trim();
-    const result = switchModelById(modelId);
-    await ctx.reply(`✅ Model switched to: *${result.name}*\n\`${result.model}\``, { parse_mode: 'Markdown' });
+  // /llm <number> — switch by dynamic index
+  const num = parseInt(arg, 10);
+  if (!isNaN(num)) {
+    const result = switchModelByIndex(num);
+    if (result.success) {
+      await ctx.reply(`✅ تم التبديل إلى:\n*${result.name}*\n\`${result.model}\``, { parse_mode: 'Markdown' });
+    } else {
+      await ctx.reply(`❌ رقم غير صالح. أرسل /llm لعرض النماذج المتاحة.`);
+    }
     return;
   }
 
-  const result = switchModel(arg);
+  // /llm <model-id> — switch by ID directly (no "set" prefix needed)
+  const modelId = arg.startsWith('set ') ? arg.substring(4).trim() : arg;
+  const result = switchModelById(modelId);
   if (result.success) {
-    await ctx.reply(`✅ Model switched to: *${result.name}*\n\`${result.model}\``, { parse_mode: 'Markdown' });
+    await ctx.reply(`✅ تم التبديل إلى:\n*${result.name}*\n\`${result.model}\``, { parse_mode: 'Markdown' });
   } else {
-    await ctx.reply(`❌ Invalid model number. Use /llm 1, 2, 3 or /llm set <id>.`);
+    await ctx.reply(`❌ النموذج \`${modelId}\` غير موجود في LM Studio.\nأرسل /llm لعرض المتاح.`, { parse_mode: 'Markdown' });
   }
 });
 
@@ -136,12 +182,12 @@ bot.command('save', async (ctx) => {
     const response = await chat(messages);
     if (response.content) {
       saveVram(userId, response.content.trim());
-      await ctx.reply('💾 *تم حفظ السياق بنجاح في الـ VRAM*\\n\\n' + response.content, { parse_mode: 'Markdown' });
+      await ctx.reply(`💾 *تم حفظ السياق بنجاح في الـ VRAM*\n\n${response.content}`, { parse_mode: 'Markdown' });
     } else {
       await ctx.reply('❌ Failed to generate memory summary.');
     }
   } catch (err) {
-    await ctx.reply(`❌ Save error: \${err}`);
+    await ctx.reply(`❌ Save error: ${err}`);
   }
 });
 
@@ -155,7 +201,7 @@ bot.command('retry', async (ctx) => {
   }
 
   const deleted = deleteAfterMessage(userId, lastUserMsg.id);
-  await ctx.reply(`🔄 Retrying... (Deleted \${deleted} previous intermediate responses)`);
+  await ctx.reply(`🔄 Retrying... (Deleted ${deleted} previous intermediate responses)`);
   await ctx.replyWithChatAction('typing');
   
   try {
@@ -163,7 +209,7 @@ bot.command('retry', async (ctx) => {
     await sendLongMessage(ctx, reply);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await ctx.reply(`⚠️ Error: \${message}`);
+    await ctx.reply(`⚠️ Error: ${message}`);
   }
 });
 
@@ -177,26 +223,25 @@ bot.command('bash', async (ctx) => {
   try {
     const { stdout, stderr } = await execAsync(cmd, { timeout: 15000 });
     const output = stdout || stderr || 'Command executed without output.';
-    await sendLongMessage(ctx, `🖥️ *Bash Execution*\\n\\n\`\`\`bash\\n\${output}\\n\`\`\``);
+    await sendLongMessage(ctx, `🖥️ *Bash Execution*\n\n\`\`\`bash\n${output}\n\`\`\``);
   } catch (err: any) {
-    await sendLongMessage(ctx, `❌ *Bash Error*\\n\\n\`\`\`bash\\n\${err.message}\\n\${err.stderr ?? ''}\\n\`\`\``);
+    await sendLongMessage(ctx, `❌ *Bash Error*\n\n\`\`\`bash\n${err.message}\n${err.stderr ?? ''}\n\`\`\``);
   }
 });
 
 bot.command('ping', async (ctx) => {
   const start = Date.now();
   try {
-    const res = await fetch('http://192.168.1.124:1234/v1/models', { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${config.localLlmUrl}/models`, { signal: AbortSignal.timeout(5000) });
     const latency = Date.now() - start;
-    await ctx.reply(`🏓 *Pong!*\\n\\nStatus: \`\${res.status}\`\\nLatency: \`\${latency} ms\``, { parse_mode: 'Markdown' });
+    await ctx.reply(`🏓 *Pong!*\n\nStatus: \`${res.status}\`\nLatency: \`${latency} ms\``, { parse_mode: 'Markdown' });
   } catch (err: any) {
-    await ctx.reply(`❌ Ping failed.\\nError: \${err.message}`);
+    await ctx.reply(`❌ Ping failed.\nError: ${err.message}`);
   }
 });
 
 bot.command('reboot', async (ctx) => {
   await ctx.reply('⚙️ Rebooting PM2 process in 2 seconds...');
-  // Decouple restart to prevent Telegram Death Loop (kill before acknowledge)
   setTimeout(() => {
     exec('pm2 restart bandclaw', (err) => {
       if (err) console.error('❌ Reboot failed:', err);
@@ -206,7 +251,7 @@ bot.command('reboot', async (ctx) => {
 
 bot.command('net', async (ctx) => {
   const searches = getStat('net_searches');
-  await ctx.reply(`🌐 *Network Statistics*\\n\\nTotal Brave API Searches: \`\${searches}\``, { parse_mode: 'Markdown' });
+  await ctx.reply(`🌐 *Network Statistics*\n\nTotal Brave API Searches: \`${searches}\``, { parse_mode: 'Markdown' });
 });
 
 // ─── /s — Status ───────────────────────────────────────────────
@@ -319,7 +364,6 @@ bot.on('message:document', async (ctx) => {
     return;
   }
 
-  // Size check (max 5MB)
   if (doc.file_size && doc.file_size > 5 * 1024 * 1024) {
     await ctx.reply('❌ File too large. Max 5MB.');
     return;
@@ -332,7 +376,6 @@ bot.on('message:document', async (ctx) => {
     const response = await fetch(`https://api.telegram.org/file/bot${config.telegramBotToken}/${file.file_path}`);
     const content = await response.text();
 
-    // Truncate very large files
     const maxChars = 15000;
     const truncated = content.length > maxChars;
     const fileContent = truncated ? content.slice(0, maxChars) + '\n\n[... truncated ...]' : content;
@@ -358,7 +401,6 @@ bot.on('message:text', async (ctx) => {
   const userId = String(ctx.from!.id);
   const text = ctx.message.text;
 
-  // Skip if it's a command (already handled)
   if (text.startsWith('/')) return;
 
   try {
@@ -375,17 +417,15 @@ bot.on('message:text', async (ctx) => {
 // ─── Utility: Send Long Messages ──────────────────────────────
 
 async function sendLongMessage(ctx: Context, text: string): Promise<void> {
-  const MAX_LENGTH = 4000; // Telegram limit is ~4096
+  const MAX_LENGTH = 4000;
 
   if (text.length <= MAX_LENGTH) {
     await ctx.reply(text, { parse_mode: 'Markdown' }).catch(() => {
-      // Fallback without markdown if parsing fails
       ctx.reply(text);
     });
     return;
   }
 
-  // Split into chunks
   const chunks: string[] = [];
   let remaining = text;
   while (remaining.length > 0) {
@@ -393,7 +433,6 @@ async function sendLongMessage(ctx: Context, text: string): Promise<void> {
       chunks.push(remaining);
       break;
     }
-    // Try to split at a newline
     let splitIndex = remaining.lastIndexOf('\n', MAX_LENGTH);
     if (splitIndex === -1 || splitIndex < MAX_LENGTH / 2) {
       splitIndex = MAX_LENGTH;

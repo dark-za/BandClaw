@@ -2,6 +2,7 @@ import { initDatabase } from './infrastructure/db.js';
 import { skillManager } from './features/skills/manager.js';
 import { startBot } from './infrastructure/bot.js';
 import { startWebhookServer } from './infrastructure/webhook.js';
+import { ensureModelLoaded } from './services/llm.js';
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -21,7 +22,7 @@ async function loadAllSkills(dirPath: string) {
          if (entry.name !== 'docs') {
            await loadAllSkills(fullPath);
          }
-      } else if (entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.ts'))) {
+      } else if (entry.isFile() && entry.name.endsWith('.js') && !entry.name.endsWith('.d.ts')) {
         if (entry.name.includes('manager') || entry.name.includes('types')) continue;
         
         try {
@@ -34,7 +35,7 @@ async function loadAllSkills(dirPath: string) {
             }
           }
         } catch (err) {
-          console.error(`❌ Failed to inject skill module: \${entry.name} - \${String(err)}`);
+          console.error(`❌ Failed to inject skill module: ${entry.name} - ${String(err)}`);
         }
       }
     }
@@ -60,13 +61,18 @@ async function main(): Promise<void> {
   console.log('📦 Engaging Dynamic Deep-Scan Loader...');
   const skillsDir = path.join(__dirname, 'features/skills');
   await loadAllSkills(skillsDir);
-  console.log(`✅ Loaded \${skillManager.getActiveSkillNames().length} native skills dynamically.`);
+  console.log(`✅ Loaded ${skillManager.getActiveSkillNames().length} native skills dynamically.`);
   console.log('');
 
-  // 3. Start webhook server
+  // 3. Ensure LLM model is loaded
+  console.log('🧠 Checking LLM model readiness...');
+  await ensureModelLoaded();
+  console.log('');
+
+  // 4. Start webhook server
   startWebhookServer();
 
-  // 4. Start Telegram bot (long polling — blocks)
+  // 5. Start Telegram bot (long polling — blocks)
   await startBot();
 }
 
