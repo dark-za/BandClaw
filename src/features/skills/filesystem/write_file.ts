@@ -45,7 +45,7 @@ export const writeFileSkill: Skill = {
       return JSON.stringify({ error: `Access denied: Target path contains blocked keyword.` });
     }
 
-    const resolvedPath = path.resolve(config.sandboxRoot, relativePath);
+    const resolvedPath = path.resolve(relativePath);
 
     const byteLength = Buffer.byteLength(content, 'utf8');
     if (byteLength > MAX_WRITE_SIZE) {

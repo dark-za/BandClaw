@@ -34,7 +34,7 @@ export const deleteFileSkill: Skill = {
       return JSON.stringify({ error: `Access denied: Target path contains blocked keyword.` });
     }
 
-    const resolvedPath = path.resolve(config.sandboxRoot, relativePath);
+    const resolvedPath = path.resolve(relativePath);
 
     try {
       const fileStat = await stat(resolvedPath);

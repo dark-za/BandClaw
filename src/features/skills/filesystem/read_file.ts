@@ -28,7 +28,7 @@ export const readFileSkill: Skill = {
     },
   },
   execute: async (params) => {
-    const resolvedPath = path.resolve(config.sandboxRoot, params.path as string);
+    const resolvedPath = path.resolve(params.path as string);
 
     try {
       await access(resolvedPath, constants.R_OK);

@@ -85,7 +85,7 @@ export const listDirectorySkill: Skill = {
     const relativePath = (params.path as string) || '.';
     const recursive = (params.recursive as boolean) ?? false;
 
-    const resolvedPath = path.resolve(config.sandboxRoot, relativePath);
+    const resolvedPath = path.resolve(relativePath);
 
     try {
       const isDir = (await stat(resolvedPath)).isDirectory();
