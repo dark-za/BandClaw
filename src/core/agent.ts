@@ -1,9 +1,14 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js';
 import { chat } from '../services/llm.js';
-import { saveMessage, getHistory, getTopVram, getOldestMessagesToCompress, deleteMessagesByIds, saveVram } from '../infrastructure/db.js';
-import { skillManager } from '../features/skills/manager.js';
+import type { IDatabaseService, ISkillManager } from '../interfaces/services.js';
+
+export interface AgentDependencies {
+  db: IDatabaseService;
+  skills: ISkillManager;
+}
 import { getActiveModelName } from '../services/llm.js';
 import { stripReasoningTags, parseTextToolCall } from './parsers/tool_parser.js';
+import { eventBus } from '../infrastructure/events.js';
 
 const MAX_ITERATIONS = 10;
 
@@ -30,14 +35,15 @@ Active tools:
 
 {VRAM_CONTEXT}`;
 
-function buildSystemPrompt(userId: string): string {
-  const tools = skillManager.getActiveTools();
+function buildSystemPrompt(userId: string, deps: AgentDependencies): string {
+  const { db, skills } = deps;
+  const tools = skills.getActiveTools();
   const schemaStr = tools.length > 0
     ? JSON.stringify(tools.map(t => t.function), null, 2)
     : 'none';
 
   // Fetch VRAM Context
-  const vramEntries = getTopVram(userId, 3);
+  const vramEntries = db.getTopVram(userId, 3);
   let vramStr = '';
   if (vramEntries.length > 0) {
     vramStr = '\\n--- VRAM (Quick Recall Context) ---\\n' + vramEntries.map((v, i) => `[Mem \${i+1}]: \${v.summary}`).join('\\n');
@@ -72,41 +78,25 @@ function storedToMessage(stored: { role: string; content: string | null; tool_ca
   } as ChatCompletionMessageParam;
 }
 
-// Background VRAM Engine Setup
-async function triggerVramCompression(userId: string) {
-  try {
-    const toCompress = getOldestMessagesToCompress(userId, 15);
-    if (toCompress.length === 0) return;
 
-    const textToSummarize = toCompress.map(m => `\${m.role}: \${m.content}`).join('\\n');
-    const prompt = `You are a core background VRAM compressor. Summarize the following historical conversation into highly dense factual data points in Arabic. Omit pleasantries. Just pure facts:\\n\\n\${textToSummarize}`;
 
-    const response = await chat([{ role: 'user', content: prompt }]);
-    if (response.content) {
-      saveVram(userId, response.content.trim());
-      deleteMessagesByIds(toCompress.map(m => m.id));
-      console.log(`[VRAM Engine] Compressed \${toCompress.length} messages into VRAM for user \${userId}.`);
-    }
-  } catch (err) {
-    console.error(`[VRAM Engine] Compression failed for user \${userId}:`, err);
-  }
-}
+export async function runAgent(userMessage: string, userId: string, deps: AgentDependencies): Promise<string> {
+  const { db, skills } = deps;
 
-export async function runAgent(userMessage: string, userId: string): Promise<string> {
-  // Trigger background compression (fire and forget to not block user interaction)
-  triggerVramCompression(userId).catch(console.error);
+  // Notify Event Bus that an agent cycle started/completed so background jobs can trigger
+  eventBus.emit('AGENT_CYCLE_COMPLETED', { userId, db });
 
   // Save user message to DB
-  saveMessage(userId, 'user', userMessage);
+  db.saveMessage(userId, 'user', userMessage);
 
   // Build messages from history
-  const history = getHistory(userId);
+  const history = db.getHistory(userId);
   const messages: ChatCompletionMessageParam[] = [
-    { role: 'system', content: buildSystemPrompt(userId) },
+    { role: 'system', content: buildSystemPrompt(userId, deps) },
     ...history.map(storedToMessage),
   ];
 
-  const tools = skillManager.getActiveTools();
+  const tools = skills.getActiveTools();
   let iterations = 0;
 
   while (iterations < MAX_ITERATIONS) {
@@ -131,7 +121,7 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
       if (response.toolCalls && response.toolCalls.length > 0) {
         // Save assistant message with tool calls
         const assistantContent = response.content ?? '';
-        saveMessage(userId, 'assistant', assistantContent, response.toolCalls);
+        db.saveMessage(userId, 'assistant', assistantContent, response.toolCalls);
 
         messages.push({
           role: 'assistant',
@@ -143,19 +133,32 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
         for (const toolCall of response.toolCalls) {
           const fnName = toolCall.function.name;
           let fnArgs: Record<string, unknown> = {};
+          let jsonError: string | null = null;
 
           try {
             fnArgs = JSON.parse(toolCall.function.arguments || '{}');
-          } catch {
-            fnArgs = {};
+          } catch (e: any) {
+            jsonError = e.message;
+          }
+
+          if (jsonError) {
+            const errMsg = `{"error": "Invalid JSON syntax in arguments: ${jsonError}. Please re-emit the tool call with correct JSON formatting."}`;
+            console.log(`  ❌ Tool args parse error: ${jsonError}`);
+            db.saveMessage(userId, 'tool', errMsg, undefined, toolCall.id, fnName);
+            messages.push({
+              role: 'tool',
+              content: errMsg,
+              tool_call_id: toolCall.id,
+            } as ChatCompletionMessageParam);
+            continue;
           }
 
           console.log(`  🔧 Executing tool: ${fnName}`, fnArgs);
-          const result = await skillManager.executeTool(fnName, fnArgs);
+          const result = await skills.executeTool(fnName, fnArgs);
           console.log(`  ✅ Tool result: ${result.slice(0, 200)}...`);
 
           // Save tool result to DB
-          saveMessage(userId, 'tool', result, undefined, toolCall.id, fnName);
+          db.saveMessage(userId, 'tool', result, undefined, toolCall.id, fnName);
 
           messages.push({
             role: 'tool',
@@ -177,7 +180,7 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
         finalContent = 'Thinking process completed, but no final answer was generated. Please adjust the model or prompt.';
       }
 
-      saveMessage(userId, 'assistant', finalContent);
+      db.saveMessage(userId, 'assistant', finalContent);
       return finalContent;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -185,18 +188,19 @@ export async function runAgent(userMessage: string, userId: string): Promise<str
 
       if (iterations >= MAX_ITERATIONS) {
         const errorMsg = '⚠️ I hit the maximum thinking limit. Please try rephrasing your request.';
-        saveMessage(userId, 'assistant', errorMsg);
+        db.saveMessage(userId, 'assistant', errorMsg);
         return errorMsg;
       }
 
       // On LLM error, return a user-friendly message
       const errorMsg = `⚠️ Error communicating with the LLM: ${message}`;
-      saveMessage(userId, 'assistant', errorMsg);
+      db.saveMessage(userId, 'assistant', errorMsg);
       return errorMsg;
     }
   }
 
   const limitMsg = '⚠️ I reached the maximum agent iteration limit. Please simplify your request.';
-  saveMessage(userId, 'assistant', limitMsg);
+  db.saveMessage(userId, 'assistant', limitMsg);
   return limitMsg;
 }
+

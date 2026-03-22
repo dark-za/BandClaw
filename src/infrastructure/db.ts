@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { config } from './config.js';
+import type { IDatabaseService } from '../interfaces/services.js';
 
 let db: Database.Database;
 
@@ -210,3 +211,15 @@ export function getMemory(key: string): string | undefined {
 export function getDb(): Database.Database {
   return db;
 }
+
+export class DatabaseService implements IDatabaseService {
+  saveMessage = saveMessage;
+  getHistory = getHistory;
+  getOldestMessagesToCompress = getOldestMessagesToCompress;
+  deleteMessagesByIds = deleteMessagesByIds;
+  saveVram = saveVram;
+  getTopVram = getTopVram;
+}
+
+export const databaseService = new DatabaseService();
+

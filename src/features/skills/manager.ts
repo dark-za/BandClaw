@@ -1,7 +1,8 @@
 import type { Skill, CategoryInfo } from '../../interfaces/types.js';
 import type { ChatCompletionTool } from 'openai/resources/chat/completions.js';
+import type { ISkillManager } from '../../interfaces/services.js';
 
-export class SkillManager {
+export class SkillManager implements ISkillManager {
   private skills: Map<string, Skill> = new Map();
   private categories: Map<string, Set<string>> = new Map(); // category → skill names
   private enabledCategories: Set<string> = new Set(['core']); // core always on by default

@@ -1,8 +1,5 @@
-import { exec } from 'node:child_process';
-import util from 'node:util';
 import type { Skill } from '../../../interfaces/types.js';
-
-const execAsync = util.promisify(exec);
+import { executeCommand } from '../../../infrastructure/terminal.js';
 
 export const terminalMasterSkill: Skill = {
   name: 'terminal_master',
@@ -42,26 +39,23 @@ export const terminalMasterSkill: Skill = {
     }
 
     try {
-      const { stdout, stderr } = await execAsync(cmd, { 
-        timeout: timeoutSec * 1000,
-        maxBuffer: 1024 * 1024 * 5 // 5MB buffer limit to prevent RAM crashes on huge outputs
+      const result = await executeCommand(cmd, { 
+        timeoutSec,
+        idleTimeoutSec: 15,
+        maxBufferBytes: 5 * 1024 * 1024 // 5MB limit
       });
       
       return JSON.stringify({
-        status: 'success',
-        exitCode: 0,
-        stdout: stdout.trim() || 'Command executed silently (no output)',
-        stderr: stderr.trim() || null
+        status: result.exitCode === 0 ? 'success' : (result.isIdleTimeout || result.isHardTimeout ? 'timeout' : 'error'),
+        exitCode: result.exitCode ?? (result.isIdleTimeout || result.isHardTimeout ? 'TIMEOUT' : 'UNKNOWN'),
+        signal: result.signal,
+        stdout: result.stdout || 'Command executed silently (no output)',
+        stderr: result.stderr || null,
+        timeoutType: result.isIdleTimeout ? 'idle (waiting for input?)' : (result.isHardTimeout ? 'hard execution limit' : 'none')
       });
     } catch (error: any) {
-      // execAsync throws on non-zero exit code or timeout
-      const isTimeout = error.killed && error.signal === 'SIGTERM';
-      
       return JSON.stringify({
-        status: isTimeout ? 'timeout' : 'error',
-        exitCode: error.code || (isTimeout ? 'TIMEOUT' : 'UNKNOWN'),
-        stdout: (error.stdout || '').trim(),
-        stderr: (error.stderr || '').trim(),
+        status: 'error',
         message: error.message
       });
     }

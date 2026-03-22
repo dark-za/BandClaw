@@ -1,8 +1,5 @@
-import { exec } from 'node:child_process';
-import util from 'node:util';
 import type { Skill } from '../../../interfaces/types.js';
-
-const execAsync = util.promisify(exec);
+import { executeCommand } from '../../../infrastructure/terminal.js';
 
 export const softwareInstallerSkill: Skill = {
   name: 'software_installer',
@@ -45,23 +42,35 @@ ALWAYS append '-y' to apt commands to avoid interactive prompts, and use non-int
     }
 
     try {
-      // Long timeout for installations (5 minutes)
-      const { stdout, stderr } = await execAsync(cmd, { timeout: 300000, maxBuffer: 1024 * 1024 * 10 });
-      
-      return JSON.stringify({
-        success: true,
-        action,
-        stdout: stdout.trim() || 'Command executed silently',
-        stderr: stderr.trim() || undefined
+      // Long timeout for installations (5 minutes), idle 30s
+      const result = await executeCommand(cmd, { 
+        timeoutSec: 300, 
+        idleTimeoutSec: 30,
+        maxBufferBytes: 10 * 1024 * 1024
       });
+      
+      if (result.exitCode === 0) {
+        return JSON.stringify({
+          success: true,
+          action,
+          stdout: result.stdout || 'Command executed silently',
+          stderr: result.stderr || undefined
+        });
+      } else {
+        return JSON.stringify({
+          success: false,
+          action,
+          exitCode: result.exitCode ?? 'UNKNOWN',
+          timeoutType: result.isIdleTimeout ? 'idle (waiting for input?)' : (result.isHardTimeout ? 'hard execution limit' : 'none'),
+          stdout: result.stdout,
+          stderr: result.stderr
+        });
+      }
     } catch (error: any) {
       return JSON.stringify({
         success: false,
         action,
-        exitCode: error.code || 'UNKNOWN',
-        error: error.message,
-        stdout: (error.stdout || '').trim(),
-        stderr: (error.stderr || '').trim()
+        error: error.message
       });
     }
   },

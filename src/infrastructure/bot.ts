@@ -3,10 +3,11 @@ import os from 'node:os';
 import { exec } from 'node:child_process';
 import util from 'node:util';
 import { config } from './config.js';
-import { clearHistory, deleteAfterMessage, getLastUserMessage, saveVram, getStat, getHistory } from './db.js';
+import { clearHistory, deleteAfterMessage, getLastUserMessage, saveVram, getStat, getHistory, databaseService } from './db.js';
 import { fetchAvailableModels, switchModelById, switchModelByIndex, getActiveModelName, getActiveModel, chat } from '../services/llm.js';
 import { runAgent } from '../core/agent.js';
 import { skillManager } from '../features/skills/manager.js';
+import { startMemoryWorker } from '../services/memory_worker.js';
 
 const execAsync = util.promisify(exec);
 
@@ -174,7 +175,7 @@ bot.command('retry', async (ctx) => {
   await ctx.replyWithChatAction('typing');
   
   try {
-    const reply = await runAgent(lastUserMsg.content, userId);
+    const reply = await runAgent(lastUserMsg.content, userId, { db: databaseService, skills: skillManager });
     await sendLongMessage(ctx, reply);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -356,7 +357,7 @@ bot.on('message:document', async (ctx) => {
     const userId = String(ctx.from!.id);
 
     await ctx.reply('🧠 Analyzing...');
-    const reply = await runAgent(userMessage, userId);
+    const reply = await runAgent(userMessage, userId, { db: databaseService, skills: skillManager });
     await sendLongMessage(ctx, reply);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -374,7 +375,7 @@ bot.on('message:text', async (ctx) => {
 
   try {
     await ctx.replyWithChatAction('typing');
-    const reply = await runAgent(text, userId);
+    const reply = await runAgent(text, userId, { db: databaseService, skills: skillManager });
     await sendLongMessage(ctx, reply);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -420,6 +421,7 @@ async function sendLongMessage(ctx: Context, text: string): Promise<void> {
 // ─── Bot Lifecycle ─────────────────────────────────────────────
 
 export async function startBot(): Promise<void> {
+  startMemoryWorker();
   await registerCommands();
 
   bot.catch((err) => {
